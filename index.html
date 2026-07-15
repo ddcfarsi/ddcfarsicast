@@ -1,0 +1,737 @@
+<!DOCTYPE html>
+<html lang="fa" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>DDCFarsi Podcast - PRO Reels Edition</title>
+    
+    <!-- لود کتابخانه های اکسترنال (آیکون ها و RecordRTC برای ضبط حرفه ای) -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/RecordRTC/5.6.2/RecordRTC.min.js"></script>
+    
+    <style>
+        @import url('https://v1.fontapi.ir/css/Vazir');
+        
+        * { box-sizing: border-box; font-family: 'Vazir', sans-serif; margin: 0; padding: 0; }
+        body { background: #121212; color: white; display: flex; flex-direction: column; align-items: center; padding-bottom: 30px; }
+
+        h2.app-title { margin-top: 15px; margin-bottom: 10px; color: #00e5ff; font-weight: bold; font-size: 24px; text-shadow: 0 0 10px rgba(0,229,255,0.5); text-align: center;}
+
+        /* ---------- محیط نمایش ریلز (نسبت 9:16) ---------- */
+        #studio-wrapper {
+            width: 100%;
+            max-width: 400px;
+            aspect-ratio: 9/16;
+            background: #000;
+            position: relative;
+            border-radius: 15px;
+            overflow: hidden;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+            border: 1px solid #333;
+        }
+
+        #raw-video { display: none; }
+        /* بوم 720 در 1280 درون این کادر رندر میشود */
+        #render-canvas { width: 100%; height: 100%; display: block; }
+
+        /* ---------- پنل تنظیمات ---------- */
+        #controls { width: 100%; max-width: 400px; padding: 15px; margin-top: 10px; }
+        .control-group { margin-bottom: 15px; background: #2a2a2a; padding: 15px; border-radius: 10px; border-right: 4px solid #00e5ff;}
+        label { display: block; margin-bottom: 8px; font-size: 13px; color: #ccc; font-weight: bold; }
+        input[type="text"], select {
+            width: 100%; padding: 10px; border-radius: 5px; border: 1px solid #444;
+            background: #222; color: white; margin-bottom: 10px; font-size: 14px; transition: 0.3s;
+        }
+        input[type="text"]:focus, select:focus { border-color: #00e5ff; outline: none; }
+        input[type="file"] { margin-bottom: 10px; font-size: 12px; width: 100%; color: #aaa; }
+        
+        button {
+            background: #00e5ff; color: #000; border: none; padding: 12px 15px;
+            border-radius: 8px; cursor: pointer; font-weight: bold; width: 100%; margin-bottom: 10px; font-size: 14px; transition: 0.2s;
+        }
+        button:hover { filter: brightness(1.1); }
+        
+        button.record-btn { background: #ff0055; color: white; animation: pulse 2s infinite; font-size: 16px; padding: 15px;}
+        button.stop-btn { background: #444; color: white; display: none; font-size: 16px; padding: 15px;}
+        button.download-btn { background: #00e676; color: black; display: none; font-size: 16px; padding: 15px;}
+        
+        @keyframes pulse {
+            0% { box-shadow: 0 0 0 0 rgba(255, 0, 85, 0.7); }
+            70% { box-shadow: 0 0 0 10px rgba(255, 0, 85, 0); }
+            100% { box-shadow: 0 0 0 0 rgba(255, 0, 85, 0); }
+        }
+
+        .flex-row { display: flex; gap: 10px; align-items: center; margin-bottom: 10px;}
+        .flex-row button { flex: 1; margin-bottom: 0;}
+        .social-inputs { display: flex; flex-direction: column; gap: 8px; margin-bottom: 10px; }
+        .social-inputs div { display: flex; align-items: center; gap: 10px; }
+        .social-inputs i { width: 25px; text-align: center; font-size: 18px; }
+
+        .checkbox-label { display: flex; align-items: center; gap: 8px; font-size: 14px; cursor: pointer; margin-top: 10px; color: white; font-weight: normal; }
+        .checkbox-label input { width: 18px; height: 18px; cursor: pointer; }
+
+        .footer-link { text-align: center; margin-top: 10px; font-size: 15px; }
+        .footer-link a { color: #ffaa00; text-decoration: none; font-weight: bold; }
+    </style>
+</head>
+<body>
+
+    <h2 class="app-title">DDCFarsi Podcast - PRO Reels</h2>
+
+    <div id="studio-wrapper">
+        <video id="raw-video" autoplay muted playsinline></video>
+        <!-- رزولوشن 9:16 استاندارد ریلز و شورتس -->
+        <canvas id="render-canvas" width="720" height="1280"></canvas>
+    </div>
+
+    <div id="controls">
+        
+        <div class="control-group" id="record-controls" style="display: none;">
+            <button id="btn-record" class="record-btn" onclick="startRecording()">🔴 شروع ضبط ریلز (PRO Audio)</button>
+            <button id="btn-stop" class="stop-btn" onclick="stopRecording()">⬛ پایان ضبط</button>
+            <button id="btn-download" class="download-btn" onclick="downloadVideo()">⬇️ دانلود ویدیو خروجی</button>
+        </div>
+
+        <div class="control-group">
+            <label>📷 و 🎙️ تنظیمات پیشرفته دستگاه‌ها</label>
+            <select id="video-source" onchange="startCamera()"></select>
+            <select id="audio-source" onchange="startCamera()"></select>
+            
+            <div class="flex-row">
+                <button onclick="startCamera(false)" style="background: #ffaa00;">فعال‌سازی / ریفرش</button>
+                <button onclick="flipCamera()" style="background: #333; color: white;">🔄 چرخش (موبایل)</button>
+            </div>
+            
+            <label class="checkbox-label">
+                <input type="checkbox" id="mirror-camera" onchange="toggleMirror()">
+                آینه‌ای کردن تصویر دوربین (چپ و راست)
+            </label>
+            
+            <p style="font-size: 11px; color: #00e676; margin-top: 10px;">
+                ✓ کمپرسور رادیویی صدا (Dynamics Compressor)<br>
+                ✓ موتور رندر ضد‌تاری (Anti-Aliasing)<br>
+                ✓ پردازشگر RecordRTC 5Mbps فعال است.
+            </p>
+
+            <button id="btn-audio-mode" onclick="toggleAudioMode()" style="background: #9c27b0; color: white; margin-top: 15px;">🎙️ تغییر به حالت اکولایزر صوتی</button>
+            <select id="eq-style" style="display: none; margin-top: 10px; background: #4a148c; border: 1px solid #7b1fa2;">
+                <option value="bars">📊 مود ۱: میله‌ای کلاسیک</option>
+                <option value="circle">⭕ مود ۲: دایره‌ای (رادیال)</option>
+                <option value="wave">〰️ مود ۳: خطی (موج صدا)</option>
+                <option value="mirrored">🪞 مود ۴: میله‌ای قرینه</option>
+            </select>
+        </div>
+
+        <div class="control-group">
+            <label>🖼️ گرافیک و تصویر</label>
+            <button onclick="toggleCameraVisibility()" style="background: #e91e63; color: white;">👁️ مخفی/نمایش دوربین (و کادر)</button>
+            
+            <label style="font-size: 12px; color: #888; margin-top:10px;">لوگو شبکه:</label>
+            <input type="file" id="logo-upload" accept="image/*">
+            
+            <label style="font-size: 12px; color: #888; margin-top: 10px;">پس‌زمینه (فعال شدن تصویر در تصویر):</label>
+            <input type="file" id="media-upload" accept="image/*,video/*">
+            
+            <div class="flex-row">
+                <button onclick="toggleCameraPiP()" style="background: #555; color: white; font-size: 12px;">کادر دوربین کوچک</button>
+                <button id="btn-bg-audio" onclick="toggleBgAudio()" style="background: #ff5252; color: white; display: none; font-size: 12px;">🔇 صدای پس‌زمینه: قطع</button>
+            </div>
+        </div>
+
+        <div class="control-group">
+            <label>📱 آیدی شبکه‌های اجتماعی</label>
+            <div class="social-inputs">
+                <div><i class="fab fa-instagram" style="color: #E1306C;"></i> <input type="text" id="soc-ig" placeholder="Instagram ID" value="@DDCFarsi"></div>
+                <div><i class="fab fa-facebook" style="color: #1877F2;"></i> <input type="text" id="soc-fb" placeholder="Facebook Page" value="DDCFarsi"></div>
+                <div><i class="fab fa-telegram" style="color: #0088cc;"></i> <input type="text" id="soc-tg" placeholder="Telegram ID"></div>
+                <div><i class="fab fa-youtube" style="color: #FF0000;"></i> <input type="text" id="soc-yt" placeholder="YouTube Channel"></div>
+            </div>
+        </div>
+
+        <div class="control-group">
+            <label>✍️ اطلاعات متنی (دارای موشن گرافیک هوشمند)</label>
+            <input type="text" id="input-title" placeholder="عنوان برنامه..." value="DDCFarsi Podcast">
+            <input type="text" id="input-speaker" placeholder="نام مهمان / گوینده..." value="نام شما">
+            <input type="text" id="input-topic" placeholder="موضوع بحث..." value="موضوع امروز ما...">
+            <input type="text" id="input-ticker" placeholder="متن نوار پایین..." value="به پادکست DDCFarsi خوش آمدید. لایک، کامنت و سابسکرایب فراموش نشود...">
+        </div>
+    </div>
+
+    <div class="footer-link">
+        <a href="https://www.youtube.com/ddcfarsi" target="_blank">www.youtube.com/ddcfarsi</a>
+    </div>
+
+    <script>
+        const videoEl = document.getElementById('raw-video');
+        const canvas = document.getElementById('render-canvas');
+        const ctx = canvas.getContext('2d', { alpha: false }); 
+        
+        // فعالسازی موتور Anti-Aliasing برای وضوح فوق العاده
+        ctx.imageSmoothingEnabled = true;
+        ctx.imageSmoothingQuality = 'high';
+        
+        let logoImg = new Image();
+        let currentStream = null;
+        
+        let customBgImg = new Image();
+        let customBgVideo = document.createElement('video');
+        customBgVideo.muted = true; 
+        customBgVideo.loop = true; 
+        customBgVideo.playsInline = true;
+        let bgMediaType = null;
+        
+        let isCameraPiP = false; 
+        let isCameraVisible = true;
+        let isCameraMirrored = false; 
+        let currentFacingMode = "user"; // برای چرخش دوربین در موبایل
+
+        // متغیر RecordRTC
+        let rtcRecorder = null;
+        let recordedBlob = null;
+
+        let isAudioMode = false;
+        let audioContext = null;
+        let analyser = null;
+        let dataArray = null;
+
+        ctx.textBaseline = "middle";
+
+        async function getDevices() {
+            try {
+                await navigator.mediaDevices.getUserMedia({ audio: true, video: true });
+                const devices = await navigator.mediaDevices.enumerateDevices();
+                
+                const videoSelect = document.getElementById('video-source');
+                const audioSelect = document.getElementById('audio-source');
+                
+                const currentVideo = videoSelect.value;
+                const currentAudio = audioSelect.value;
+
+                videoSelect.innerHTML = ''; 
+                audioSelect.innerHTML = '';
+
+                devices.forEach(device => {
+                    const option = document.createElement('option');
+                    option.value = device.deviceId;
+                    if (device.kind === 'videoinput') {
+                        option.text = device.label || `دوربین ${videoSelect.length + 1}`;
+                        videoSelect.appendChild(option);
+                    } else if (device.kind === 'audioinput') {
+                        option.text = device.label || `میکروفون ${audioSelect.length + 1}`;
+                        audioSelect.appendChild(option);
+                    }
+                });
+
+                if (currentVideo) videoSelect.value = currentVideo;
+                if (currentAudio) audioSelect.value = currentAudio;
+
+            } catch (err) { console.error("Device Error:", err); }
+        }
+        
+        getDevices();
+        navigator.mediaDevices.ondevicechange = getDevices;
+
+        async function startCamera(useFacingMode = false) {
+            if (currentStream) {
+                currentStream.getTracks().forEach(t => t.stop());
+            }
+            
+            const vSource = document.getElementById('video-source').value;
+            const aSource = document.getElementById('audio-source').value;
+            
+            // رزولوشن 9:16 برای ریلز
+            let videoConstraints = { width: { ideal: 720 }, height: { ideal: 1280 } };
+            
+            if (useFacingMode) {
+                videoConstraints.facingMode = currentFacingMode;
+            } else if (vSource) {
+                videoConstraints.deviceId = { exact: vSource };
+            }
+
+            let audioConstraints = { 
+                echoCancellation: true, 
+                noiseSuppression: true,
+                autoGainControl: true,
+                sampleRate: 48000,
+                channelCount: 2
+            };
+            if (aSource) audioConstraints.deviceId = { exact: aSource };
+            
+            try {
+                currentStream = await navigator.mediaDevices.getUserMedia({ video: videoConstraints, audio: audioConstraints });
+                videoEl.srcObject = currentStream;
+                await videoEl.play();
+
+                setupAudioEqualizer();
+                document.getElementById('record-controls').style.display = 'block';
+                requestAnimationFrame(renderCanvas);
+            } catch (error) { 
+                console.error("Camera Error:", error);
+            }
+        }
+
+        // تابع چرخش دوربین برای موبایل
+        function flipCamera() {
+            currentFacingMode = currentFacingMode === "user" ? "environment" : "user";
+            startCamera(true);
+        }
+
+        function toggleCameraVisibility() {
+            isCameraVisible = !isCameraVisible;
+        }
+
+        function toggleMirror() {
+            isCameraMirrored = document.getElementById('mirror-camera').checked;
+        }
+
+        function toggleBgAudio() {
+            const btn = document.getElementById('btn-bg-audio');
+            customBgVideo.muted = !customBgVideo.muted;
+            
+            if (customBgVideo.muted) {
+                btn.innerHTML = "🔇 صدای پس‌زمینه: قطع";
+                btn.style.background = "#ff5252"; 
+            } else {
+                btn.innerHTML = "🔊 صدای پس‌زمینه: وصل";
+                btn.style.background = "#4caf50"; 
+            }
+        }
+
+        function toggleAudioMode() {
+            isAudioMode = !isAudioMode;
+            const btn = document.getElementById('btn-audio-mode');
+            const eqSelect = document.getElementById('eq-style');
+            
+            if (isAudioMode) {
+                btn.innerHTML = "🎥 بازگشت به حالت تصویر کامل";
+                btn.style.background = "#ff0055";
+                eqSelect.style.display = "block";
+                if (audioContext && audioContext.state === 'suspended') audioContext.resume();
+            } else {
+                btn.innerHTML = "🎙️ تغییر به حالت اکولایزر صوتی";
+                btn.style.background = "#9c27b0";
+                eqSelect.style.display = "none";
+            }
+        }
+
+        function setupAudioEqualizer() {
+            if (!currentStream || currentStream.getAudioTracks().length === 0) return;
+            try {
+                if (!audioContext) {
+                    audioContext = new (window.AudioContext || window.webkitAudioContext)();
+                    analyser = audioContext.createAnalyser();
+                    analyser.fftSize = 128;
+                    const source = audioContext.createMediaStreamSource(currentStream);
+                    source.connect(analyser);
+                    dataArray = new Uint8Array(analyser.frequencyBinCount);
+                }
+                if (audioContext.state === 'suspended') audioContext.resume();
+            } catch (e) { console.error("Audio Context Error:", e); }
+        }
+
+        document.getElementById('logo-upload').addEventListener('change', function(e) {
+            const file = e.target.files[0];
+            if (file) logoImg.src = URL.createObjectURL(file);
+        });
+
+        document.getElementById('media-upload').addEventListener('change', function(e) {
+            const file = e.target.files[0];
+            if (!file) return;
+            const url = URL.createObjectURL(file);
+            const btnBgAudio = document.getElementById('btn-bg-audio');
+            
+            if (file.type.startsWith('video/')) {
+                bgMediaType = 'video';
+                customBgVideo.src = url;
+                customBgVideo.play();
+                btnBgAudio.style.display = 'block'; 
+            } else {
+                bgMediaType = 'image';
+                customBgImg.src = url;
+                btnBgAudio.style.display = 'none'; 
+            }
+            isCameraPiP = true; 
+        });
+
+        function toggleCameraPiP() { isCameraPiP = !isCameraPiP; }
+
+        function drawScaled(media, isMirrored = false) {
+            const vW = media.videoWidth || media.width;
+            const vH = media.videoHeight || media.height;
+            const scale = Math.max(canvas.width / vW, canvas.height / vH);
+            const x = (canvas.width / 2) - (vW / 2) * scale;
+            const y = (canvas.height / 2) - (vH / 2) * scale;
+            
+            if (isMirrored) {
+                ctx.save();
+                ctx.scale(-1, 1);
+                ctx.drawImage(media, -x - (vW * scale), y, vW * scale, vH * scale);
+                ctx.restore();
+            } else {
+                ctx.drawImage(media, x, y, vW * scale, vH * scale);
+            }
+        }
+
+        let tickerX = 720;
+        let textMotionState = 'WAITING'; 
+        let textMotionTimer = 0;
+        let textMotionProgress = 0;
+
+        function easeOutCubic(t) { return 1 - Math.pow(1 - t, 3); }
+
+        function renderCanvas() {
+            ctx.fillStyle = "#121212"; 
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            // 1. پس‌زمینه
+            if (bgMediaType === 'video' && customBgVideo.readyState >= 2) {
+                drawScaled(customBgVideo);
+            } else if (bgMediaType === 'image' && customBgImg.src) {
+                drawScaled(customBgImg);
+            }
+
+            // 2. اکولایزر یا دوربین
+            if (isAudioMode) {
+                if (analyser && dataArray) {
+                    const eqType = document.getElementById('eq-style').value;
+                    const bufferLength = analyser.frequencyBinCount; 
+                    
+                    let gradient = ctx.createLinearGradient(0, canvas.height/2 - 150, 0, canvas.height/2 + 150);
+                    gradient.addColorStop(0, "#00e5ff");
+                    gradient.addColorStop(1, "#ffaa00");
+
+                    if (eqType === 'wave') {
+                        analyser.getByteTimeDomainData(dataArray);
+                        ctx.lineWidth = 6;
+                        ctx.strokeStyle = gradient;
+                        ctx.beginPath();
+                        let sliceWidth = canvas.width * 1.0 / bufferLength;
+                        let x = 0;
+                        for(let i = 0; i < bufferLength; i++) {
+                            let v = dataArray[i] / 128.0; 
+                            let y = v * (canvas.height / 2);
+                            if(i === 0) ctx.moveTo(x, y);
+                            else ctx.lineTo(x, y);
+                            x += sliceWidth;
+                        }
+                        ctx.lineTo(canvas.width, canvas.height / 2);
+                        ctx.stroke();
+                        
+                    } else {
+                        analyser.getByteFrequencyData(dataArray);
+                        if (eqType === 'bars') {
+                            const barWidth = (canvas.width / bufferLength) * 1.5;
+                            let x = (canvas.width - (bufferLength * barWidth)) / 2;
+                            for(let i = 0; i < bufferLength; i++) {
+                                let barHeight = dataArray[i] * 1.5;
+                                ctx.fillStyle = gradient;
+                                ctx.roundRect(x, (canvas.height / 2) - (barHeight / 2), barWidth - 4, barHeight, 5);
+                                ctx.fill();
+                                x += barWidth;
+                            }
+                        } 
+                        else if (eqType === 'mirrored') {
+                            const barWidth = (canvas.width / bufferLength);
+                            let x = 0;
+                            const centerY = canvas.height / 2;
+                            for(let i = 0; i < bufferLength; i++) {
+                                let barHeight = dataArray[i] * 1.2;
+                                ctx.fillStyle = gradient;
+                                ctx.roundRect(x, centerY - barHeight, barWidth - 2, barHeight, 3);
+                                ctx.roundRect(x, centerY, barWidth - 2, barHeight, 3);
+                                ctx.fill();
+                                x += barWidth;
+                            }
+                        }
+                        else if (eqType === 'circle') {
+                            const centerX = canvas.width / 2;
+                            const centerY = canvas.height / 2 - 20;
+                            const radius = 120;
+                            ctx.lineWidth = 5;
+                            ctx.strokeStyle = gradient;
+                            ctx.fillStyle = gradient;
+                            ctx.beginPath();
+                            ctx.arc(centerX, centerY, radius, 0, 2 * Math.PI);
+                            ctx.stroke();
+                            for(let i = 0; i < bufferLength; i++) {
+                                let barHeight = dataArray[i] * 0.8;
+                                let angle = (i * 2 * Math.PI) / bufferLength;
+                                let x1 = centerX + Math.cos(angle) * radius;
+                                let y1 = centerY + Math.sin(angle) * radius;
+                                let x2 = centerX + Math.cos(angle) * (radius + barHeight);
+                                let y2 = centerY + Math.sin(angle) * (radius + barHeight);
+                                ctx.beginPath();
+                                ctx.moveTo(x1, y1);
+                                ctx.lineTo(x2, y2);
+                                ctx.stroke();
+                                ctx.beginPath();
+                                ctx.arc(x2, y2, 4, 0, 2 * Math.PI);
+                                ctx.fill();
+                            }
+                        }
+                    }
+                }
+            } else {
+                if (isCameraVisible && videoEl.readyState === videoEl.HAVE_ENOUGH_DATA) {
+                    if (isCameraPiP) {
+                        // مختصات دوربین کوچک برای ریلز (گوشه بالا راست)
+                        const pipW = 220;
+                        const pipH = 290;
+                        const pipX = canvas.width - pipW - 30; 
+                        const pipY = 110; 
+                        
+                        ctx.save();
+                        ctx.beginPath();
+                        ctx.roundRect(pipX, pipY, pipW, pipH, 15);
+                        ctx.clip();
+                        
+                        if (isCameraMirrored) {
+                            ctx.scale(-1, 1);
+                            ctx.drawImage(videoEl, -pipX - pipW, pipY, pipW, pipH);
+                        } else {
+                            ctx.drawImage(videoEl, pipX, pipY, pipW, pipH);
+                        }
+                        
+                        ctx.restore();
+                        ctx.beginPath();
+                        ctx.roundRect(pipX, pipY, pipW, pipH, 15);
+                        ctx.lineWidth = 4;
+                        ctx.strokeStyle = "#fff";
+                        ctx.stroke();
+                    } else {
+                        drawScaled(videoEl, isCameraMirrored);
+                    }
+                }
+            }
+
+            // 3. لوگو
+            if (logoImg.src) {
+                ctx.save();
+                ctx.beginPath();
+                ctx.arc(80, 80, 50, 0, Math.PI * 2);
+                ctx.clip();
+                ctx.drawImage(logoImg, 30, 30, 100, 100);
+                ctx.restore();
+            }
+
+            // 4. عنوان
+            const title = document.getElementById('input-title').value;
+            if (title) {
+                ctx.fillStyle = "rgba(0, 0, 0, 0.6)";
+                ctx.roundRect(canvas.width - 280, 30, 250, 50, 10);
+                ctx.fill();
+                ctx.fillStyle = "#ffaa00";
+                ctx.font = "bold 22px Vazir, Arial";
+                ctx.textAlign = "center";
+                ctx.fillText(title, canvas.width - 155, 55);
+            }
+
+            // 5. شبکه‌های اجتماعی
+            renderSocials();
+
+            // 6. موشن گرافیک زمان‌بندی شده برای گوینده
+            const speaker = document.getElementById('input-speaker').value;
+            const topic = document.getElementById('input-topic').value;
+            
+            if (speaker || topic) {
+                textMotionTimer++;
+                
+                if (textMotionState === 'WAITING' && textMotionTimer > 600) { 
+                    textMotionState = 'ENTERING'; textMotionTimer = 0;
+                } 
+                else if (textMotionState === 'ENTERING') {
+                    textMotionProgress += 0.02; 
+                    if (textMotionProgress >= 1) { textMotionProgress = 1; textMotionState = 'VISIBLE'; textMotionTimer = 0; }
+                } 
+                else if (textMotionState === 'VISIBLE' && textMotionTimer > 420) { 
+                    textMotionState = 'EXITING'; textMotionTimer = 0;
+                } 
+                else if (textMotionState === 'EXITING') {
+                    textMotionProgress -= 0.02;
+                    if (textMotionProgress <= 0) { textMotionProgress = 0; textMotionState = 'WAITING'; textMotionTimer = 0; }
+                }
+
+                if (textMotionProgress > 0) {
+                    const eased = easeOutCubic(textMotionProgress);
+                    const startX = -400; 
+                    const targetX = 30; 
+                    const currentX = startX + (targetX - startX) * eased;
+
+                    ctx.save();
+                    ctx.globalAlpha = eased; 
+                    
+                    ctx.fillStyle = "rgba(0, 0, 0, 0.7)";
+                    ctx.roundRect(currentX, canvas.height - 150, 360, 80, 15);
+                    ctx.fill();
+                    
+                    ctx.fillStyle = "#00e5ff"; 
+                    ctx.fillRect(currentX, canvas.height - 150, 10, 80);
+                    
+                    ctx.textAlign = "right";
+                    ctx.font = "bold 28px Vazir, Arial";
+                    ctx.fillStyle = "#fff";
+                    ctx.fillText(speaker, currentX + 340, canvas.height - 120);
+                    
+                    ctx.font = "18px Vazir, Arial";
+                    ctx.fillStyle = "#ccc";
+                    ctx.fillText(topic, currentX + 340, canvas.height - 85);
+                    
+                    ctx.restore();
+                }
+            }
+
+            // 7. زیرنویس متحرک
+            const tickerText = document.getElementById('input-ticker').value;
+            if (tickerText) {
+                ctx.fillStyle = "rgba(255, 0, 85, 0.9)";
+                ctx.fillRect(0, canvas.height - 50, canvas.width, 50);
+                ctx.fillStyle = "#fff";
+                ctx.font = "bold 22px Vazir, Arial";
+                ctx.textAlign = "left";
+                ctx.fillText(tickerText, tickerX, canvas.height - 25);
+                
+                tickerX -= 1.5; 
+                const textWidth = ctx.measureText(tickerText).width;
+                if (tickerX < -textWidth) tickerX = canvas.width;
+            }
+
+            requestAnimationFrame(renderCanvas);
+        }
+
+        let socialIndex = 0;
+        let socialTimer = 0;
+        function renderSocials() {
+            const ig = document.getElementById('soc-ig').value;
+            const fb = document.getElementById('soc-fb').value; 
+            const tg = document.getElementById('soc-tg').value;
+            const yt = document.getElementById('soc-yt').value;
+            
+            let activeSocials = [];
+            if(ig) activeSocials.push({ text: ig, color: '#E1306C', icon: '\uf16d' });
+            if(fb) activeSocials.push({ text: fb, color: '#1877F2', icon: '\uf09a' }); 
+            if(tg) activeSocials.push({ text: tg, color: '#0088cc', icon: '\uf2c6' });
+            if(yt) activeSocials.push({ text: yt, color: '#FF0000', icon: '\uf167' });
+
+            if (activeSocials.length === 0) return;
+
+            socialTimer++;
+            if (socialTimer > 150) { 
+                socialIndex = (socialIndex + 1) % activeSocials.length;
+                socialTimer = 0;
+            }
+
+            const current = activeSocials[socialIndex];
+            
+            // داینامیک بودن موقعیت شبکه اجتماعی در ریلز
+            const boxY = (isCameraPiP && isCameraVisible && !isAudioMode) ? 420 : 100;
+
+            ctx.fillStyle = "rgba(0, 0, 0, 0.6)";
+            ctx.roundRect(canvas.width - 250, boxY, 220, 40, 20);
+            ctx.fill();
+
+            ctx.fillStyle = current.color;
+            ctx.font = '900 22px "Font Awesome 6 Brands"';
+            ctx.textAlign = "left";
+            ctx.fillText(current.icon, canvas.width - 230, boxY + 22);
+            
+            ctx.font = "bold 18px Vazir, Arial";
+            ctx.fillStyle = "#fff";
+            ctx.fillText(current.text, canvas.width - 190, boxY + 20);
+        }
+
+        CanvasRenderingContext2D.prototype.roundRect = function (x, y, w, h, r) {
+            if (w < 2 * r) r = w / 2;
+            if (h < 2 * r) r = h / 2;
+            this.beginPath();
+            this.moveTo(x + r, y);
+            this.arcTo(x + w, y, x + w, y + h, r);
+            this.arcTo(x + w, y + h, x + x, y + h, r);
+            this.arcTo(x, y + h, x, y, r);
+            this.arcTo(x, y, x + w, y, r);
+            this.closePath();
+            return this;
+        }
+
+        // --- پردازش استودیویی و استفاده از RecordRTC ---
+        function startRecording() {
+            if (!currentStream) return alert("ابتدا دوربین/میکروفون را فعال کنید.");
+            
+            const canvasStream = canvas.captureStream(30); 
+            
+            const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+            const dest = audioCtx.createMediaStreamDestination();
+
+            // کمپرسور صدای استودیویی
+            const compressor = audioCtx.createDynamicsCompressor();
+            compressor.threshold.value = -24; 
+            compressor.knee.value = 30; 
+            compressor.ratio.value = 12; 
+            compressor.attack.value = 0.003; 
+            compressor.release.value = 0.25; 
+            compressor.connect(dest);
+
+            if (currentStream.getAudioTracks().length > 0) {
+                const micSource = audioCtx.createMediaStreamSource(currentStream);
+                micSource.connect(compressor);
+            }
+
+            if (bgMediaType === 'video' && !customBgVideo.muted) {
+                try {
+                    const bgStream = customBgVideo.captureStream ? customBgVideo.captureStream() : customBgVideo.mozCaptureStream();
+                    if (bgStream && bgStream.getAudioTracks().length > 0) {
+                        const bgSource = audioCtx.createMediaStreamSource(bgStream);
+                        bgSource.connect(dest);
+                    }
+                } catch(e) { console.error("خطا در ترکیب صدای پس زمینه:", e); }
+            }
+            
+            const combinedStream = new MediaStream([
+                ...canvasStream.getVideoTracks(),
+                ...dest.stream.getAudioTracks()
+            ]);
+            
+            // استفاده از RecordRTC برای بالاترین ثبات کیفی (نسخه ریلز 5Mbps)
+            rtcRecorder = RecordRTC(combinedStream, {
+                type: 'video',
+                mimeType: 'video/webm;codecs=vp8,opus',
+                videoBitsPerSecond: 5000000, // 5 مگابیت (بسیار عالی برای 720x1280)
+                audioBitsPerSecond: 128000,
+                frameInterval: 30,
+                disableLogs: false
+            });
+
+            rtcRecorder.startRecording();
+            isRecording = true;
+
+            document.getElementById('btn-record').style.display = 'none';
+            document.getElementById('btn-stop').style.display = 'block';
+            document.getElementById('btn-download').style.display = 'none';
+        }
+
+        function stopRecording() {
+            if (rtcRecorder && isRecording) {
+                rtcRecorder.stopRecording(function() {
+                    recordedBlob = rtcRecorder.getBlob();
+                    isRecording = false;
+                    document.getElementById('btn-record').style.display = 'block';
+                    document.getElementById('btn-stop').style.display = 'none';
+                    document.getElementById('btn-download').style.display = 'block';
+                });
+            }
+        }
+
+        function downloadVideo() {
+            if (!recordedBlob) return;
+            const url = URL.createObjectURL(recordedBlob);
+            const a = document.createElement('a');
+            document.body.appendChild(a);
+            a.style = 'display: none';
+            a.href = url;
+            const prefix = isAudioMode ? "Audiogram_PRO" : "Reels_PRO";
+            a.download = `DDCFarsi_${prefix}_${new Date().getTime()}.webm`;
+            a.click();
+            window.URL.revokeObjectURL(url);
+        }
+    </script>
+</body>
+</html>
